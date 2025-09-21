@@ -3,9 +3,10 @@ name: Auto Release ktool
 on:
   push:
     branches:
-      - ktool
+      - main
     paths:
       - 'kubectl-ktool.sh'
+      - '.github/workflows/release.yml'
 jobs:
   release:
     runs-on: ubuntu-latest
