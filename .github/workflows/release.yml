@@ -7,40 +7,90 @@ on:
     paths:
       - 'kubectl-ktool.sh'
       - '.github/workflows/release.yml'
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: 'Version bump type (major, minor, patch)'
+        required: true
+
 jobs:
   release:
     runs-on: ubuntu-latest
 
     permissions:
       contents: write
-    
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
 
-      - name: Get Release Version from Tag
-        id: get_version
+    steps:
+      - name: Checkout code with full history
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8ee9f0a3bb8643e79b24663d0c522
+        with:
+          fetch-depth: 0
+
+      - name: Get latest tag (fail if none)
+        id: get_latest_tag
         run: |
-          echo "RELEASE_VERSION=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+          LATEST_TAG=$(git describe --tags --abbrev=0) || { echo "No tags found, please create initial tag like v0.0.0"; exit 1; }
+          echo "LATEST_TAG=$LATEST_TAG" >> $GITHUB_OUTPUT
+
+      - name: Determine new release tag
+        id: determine_tag
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            BUMP_TYPE="patch"
+          else
+            BUMP_TYPE="${{ github.event.inputs.bump }}"
+          fi
+
+          VERSION="${{ steps.get_latest_tag.outputs.LATEST_TAG }}"
+          VERSION=${VERSION#v}
+
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION"
+
+          case "$BUMP_TYPE" in
+            major)
+              MAJOR=$((MAJOR + 1))
+              MINOR=0
+              PATCH=0
+              ;;
+            minor)
+              MINOR=$((MINOR + 1))
+              PATCH=0
+              ;;
+            patch)
+              PATCH=$((PATCH + 1))
+              ;;
+            *)
+              echo "Invalid bump type: $BUMP_TYPE"
+              exit 1
+              ;;
+          esac
+
+          NEW_TAG="v${MAJOR}.${MINOR}.${PATCH}"
+          echo "Bumping version: $VERSION => $NEW_TAG"
+          echo "RELEASE_TAG=$NEW_TAG" >> $GITHUB_OUTPUT
+
+      - name: Create and push new tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag ${{ steps.determine_tag.outputs.RELEASE_TAG }}
+          git push origin ${{ steps.determine_tag.outputs.RELEASE_TAG }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Prepare Release Asset
         id: prepare_asset
         run: |
-            # Use sed to replace the placeholder '%%RELEASE_VERSION%%' with the actual tag
-            sed "s/%%RELEASE_VERSION%%/${{ steps.get_version.outputs.RELEASE_VERSION }}/g" kubectl-ktool.sh > kubectl-ktool-release.sh
-            
-            # Make the final script executable
-            chmod +x kubectl-ktool-release.sh
-        
-            # Set the path for the upload step
-            echo "ASSET_PATH=./kubectl-ktool-release.sh" >> $GITHUB_OUTPUT
-            echo "ASSET_NAME=kubectl-ktool.sh" >> $GITHUB_OUTPUT
+          sed "s/%%RELEASE_VERSION%%/${{ steps.determine_tag.outputs.RELEASE_TAG }}/g" kubectl-ktool.sh > kubectl-ktool-release.sh
+          chmod +x kubectl-ktool-release.sh
+          mv kubectl-ktool-release.sh kubectl-ktool.sh
+          echo "ASSET_PATH=kubectl-ktool.sh" >> $GITHUB_OUTPUT
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@6cbd405e2c4e67a21c47fa9e383d020e4e28b836
+        uses: softprops/action-gh-release@v1
         with:
-            tag_name: ${{ github.ref_name }}
-            name: Release ${{ github.ref_name }}
-            files: ${{ steps.prepare_asset.outputs.ASSET_PATH }} => ${{ steps.prepare_asset.outputs.ASSET_NAME }}      
+          tag_name: ${{ steps.determine_tag.outputs.RELEASE_TAG }}
+          name: Release ${{ steps.determine_tag.outputs.RELEASE_TAG }}
+          files: ${{ steps.prepare_asset.outputs.ASSET_PATH }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
