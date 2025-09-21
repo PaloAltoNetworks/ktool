@@ -22,8 +22,8 @@ jobs:
 
     steps:
       - name: Checkout code with full history
-        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8ee9f0a3bb8643e79b24663d0c522
-        with:
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+        with:   
           fetch-depth: 0
 
       - name: Get latest tag (fail if none)
@@ -87,7 +87,7 @@ jobs:
           echo "ASSET_PATH=kubectl-ktool.sh" >> $GITHUB_OUTPUT
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@6cbd405e2c4e67a21c47fa9e383d020e4e28b836
         with:
           tag_name: ${{ steps.determine_tag.outputs.RELEASE_TAG }}
           name: Release ${{ steps.determine_tag.outputs.RELEASE_TAG }}
