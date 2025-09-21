@@ -1,0 +1,45 @@
+name: Auto Release ktool
+
+on:
+  push:
+    branches:
+      - ktool
+    paths:
+      - 'kubectl-ktool.sh'
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+
+      - name: Get Release Version from Tag
+        id: get_version
+        run: |
+          echo "RELEASE_VERSION=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+
+      - name: Prepare Release Asset
+        id: prepare_asset
+        run: |
+            # Use sed to replace the placeholder '%%RELEASE_VERSION%%' with the actual tag
+            sed "s/%%RELEASE_VERSION%%/${{ steps.get_version.outputs.RELEASE_VERSION }}/g" kubectl-ktool.sh > kubectl-ktool-release.sh
+            
+            # Make the final script executable
+            chmod +x kubectl-ktool-release.sh
+        
+            # Set the path for the upload step
+            echo "ASSET_PATH=./kubectl-ktool-release.sh" >> $GITHUB_OUTPUT
+            echo "ASSET_NAME=kubectl-ktool.sh" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@6cbd405e2c4e67a21c47fa9e383d020e4e28b836
+        with:
+            tag_name: ${{ github.ref_name }}
+            name: Release ${{ github.ref_name }}
+            files: ${{ steps.prepare_asset.outputs.ASSET_PATH }} => ${{ steps.prepare_asset.outputs.ASSET_NAME }}      
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
