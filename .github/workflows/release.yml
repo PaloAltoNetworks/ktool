@@ -5,12 +5,12 @@ on:
     branches:
       - main
     paths:
-      - 'kubectl-ktool.sh'
-      - '.github/workflows/release.yml'
+      - "kubectl-ktool.sh"
+      - ".github/workflows/release.yml"
   workflow_dispatch:
     inputs:
       bump:
-        description: 'Version bump type (major, minor, patch)'
+        description: "Version bump type (major, minor, patch)"
         required: true
 
 jobs:
@@ -23,7 +23,7 @@ jobs:
     steps:
       - name: Checkout code with full history
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
-        with:   
+        with:
           fetch-depth: 0
 
       - name: Get latest tag (fail if none)
@@ -36,9 +36,9 @@ jobs:
         id: determine_tag
         run: |
           if [ "${{ github.event_name }}" = "push" ]; then
-            BUMP_TYPE="patch"
+              BUMP_TYPE="patch"
           else
-            BUMP_TYPE="${{ github.event.inputs.bump }}"
+              BUMP_TYPE="${{ github.event.inputs.bump }}"
           fi
 
           VERSION="${{ steps.get_latest_tag.outputs.LATEST_TAG }}"
@@ -47,19 +47,19 @@ jobs:
           IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION"
 
           case "$BUMP_TYPE" in
-            major)
+              major)
               MAJOR=$((MAJOR + 1))
               MINOR=0
               PATCH=0
               ;;
-            minor)
+              minor)
               MINOR=$((MINOR + 1))
               PATCH=0
               ;;
-            patch)
+              patch)
               PATCH=$((PATCH + 1))
               ;;
-            *)
+              *)
               echo "Invalid bump type: $BUMP_TYPE"
               exit 1
               ;;
@@ -68,7 +68,6 @@ jobs:
           NEW_TAG="v${MAJOR}.${MINOR}.${PATCH}"
           echo "Bumping version: $VERSION => $NEW_TAG"
           echo "RELEASE_TAG=$NEW_TAG" >> $GITHUB_OUTPUT
-
       - name: Create and push new tag
         run: |
           git config user.name "github-actions[bot]"
