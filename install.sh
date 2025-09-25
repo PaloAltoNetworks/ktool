@@ -14,12 +14,12 @@
 
   echo "--> Getting latest release information..."
   RELEASE_JSON=$(curl -fsSL "https://api.github.com/repos/$REPO/releases/latest") || error "Failed to fetch release info"
-  VERSION=$(echo "$RELEASE_JSON" | grep 'tag_name' | sed 's/.*"tag_name": *"\([^"]*\)".*/\1/') || error "Failed to parse version tag"
+  VERSION=$(echo "$RELEASE_JSON" | grep -m 1 '"tag_name":' | cut -d'"' -f4) || error "Failed to parse version tag"
   if [ -z "$VERSION" ]; then
     error "Could not find latest version tag"
   fi
   
-  DOWNLOAD_URL=$(echo "$RELEASE_JSON" | grep 'browser_download_url' | grep "$ASSET_NAME" | sed 's/.*"browser_download_url": *"\([^"]*\)".*/\1/') || error "Failed to find download URL for $ASSET_NAME"
+  DOWNLOAD_URL=$(echo "$RELEASE_JSON" | grep -m 1 'browser_download_url' | grep "$ASSET_NAME" | cut -d'"' -f4) || error "Failed to find download URL for $ASSET_NAME"  
   if [ -z "$DOWNLOAD_URL" ]; then
     error "Download URL for $ASSET_NAME is empty"
   fi
