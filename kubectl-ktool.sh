@@ -159,7 +159,6 @@ handle_upgrade() {
     echo "Upgrading to ${LATEST_RELEASE}..."
     if curl -fsSL "${INSTALLATION_SCRIPT_URL}" | bash; then
         echo "Upgrade complete to release ${LATEST_RELEASE}."
-        echo "Please re-run your previous command."
     else
         error "The upgrade process failed."
     fi
