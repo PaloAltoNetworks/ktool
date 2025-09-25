@@ -42,7 +42,7 @@ jobs:
           fi
 
           VERSION="${{ steps.get_latest_tag.outputs.LATEST_TAG }}"
-          VERSION=${VERSION#vktool-v}
+          VERSION=${VERSION#ktool-v}
 
           IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION"
 
