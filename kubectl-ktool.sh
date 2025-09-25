@@ -70,6 +70,23 @@ get_latest_release() {
     echo "$LATEST_RELEASE"
 }
 
+# parse_major_version extracts the major version number from a release string.
+#
+# Arguments:
+#   $1: The release string (e.g., "v1.2.3").
+#
+# Outputs:
+#   The major version number (e.g., "1").
+#   Returns empty and a non-zero exit code on failure.
+parse_major_version() {
+    local release_string="$1"
+    if [[ "$release_string" =~ v([0-9]+) ]]; then
+        echo "${BASH_REMATCH[1]}"
+    else
+        return 1
+    fi
+}
+
 # check_for_updates checks if a newer version of the script is available.
 # It performs a quick check in the background and warns the user if an
 # update is found. It enforces mandatory updates for new major versions.
@@ -89,12 +106,19 @@ check_for_updates() {
         return
     fi
 
-    # Compare major version numbers (e.g., the '1' in 'ktool-v1.2.3').
     local CURRENT_MAJOR_RELEASE
-    CURRENT_MAJOR_RELEASE=$(echo "$RELEASE" | cut -d'ktool-v' -f2 | cut -d'.' -f1)
+    CURRENT_MAJOR_RELEASE=$(parse_major_version "$RELEASE")
+    if [ -z "$CURRENT_MAJOR_RELEASE" ]; then
+        WARN "Could not parse current release version: ${RELEASE}"
+        return
+    fi
     
     local LATEST_MAJOR_RELEASE
-    LATEST_MAJOR_RELEASE=$(echo "$LATEST_RELEASE" | cut -d'ktool-v' -f2 | cut -d'.' -f1)
+    LATEST_MAJOR_RELEASE=$(parse_major_version "$LATEST_RELEASE")
+    if [ -z "$LATEST_MAJOR_RELEASE" ]; then
+        WARN "Could not parse latest release version: ${LATEST_RELEASE}"
+        return
+    fi
 
     if [ "$LATEST_MAJOR_RELEASE" -gt "$CURRENT_MAJOR_RELEASE" ]; then
         # For major version changes, the update is considered mandatory for most commands.
