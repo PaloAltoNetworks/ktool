@@ -302,14 +302,18 @@ collect_logs() {
 
     echo "[5/6] Collecting Pod Logs..."
     mkdir -p "${BUNDLE_DIR}/logs"
-    PODS=$(${KUBECTL_BASE_CMD} get pods -n "$NAMESPACE" -o jsonpath='{.items[*].metadata.name}' 2>/dev/null)
+    PODS=$(${KUBECTL_BASE_CMD} get pods -n "$NAMESPACE" -o jsonpath='{.items[*].metadata.name}' 2>/dev/null)  
     for pod in $PODS; do
+      (
         CONTAINERS=$(${KUBECTL_BASE_CMD} get pod "$pod" -n "$NAMESPACE" -o jsonpath='{.spec.containers[*].name} {.spec.initContainers[*].name}' 2>/dev/null)
         for container in $CONTAINERS; do
             collect_cmd "Logs for ${pod}/${container}" "${KUBECTL_BASE_CMD} logs ${pod} -c ${container} -n ${NAMESPACE}" "logs/${pod}_${container}.log"
             collect_cmd "Previous logs for ${pod}/${container}" "${KUBECTL_BASE_CMD} logs ${pod} -c ${container} -n ${NAMESPACE} --previous" "logs/${pod}_${container}.previous.log"
         done
+      ) &
     done
+    wait 
+    echo "Log collection complete."
 
     echo "[6/6] Collecting Operator Configurations..."
     mkdir -p "${BUNDLE_DIR}/operator"
