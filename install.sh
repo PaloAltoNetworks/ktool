@@ -1,3 +1,4 @@
+#!/bin/sh
 (
   set -e
 
@@ -7,25 +8,31 @@
   }
 
   REPO="PaloAltoNetworks/ktool"
-  BINARY="kubectl-ktool"
-  INSTALL_PATH="/usr/local/bin/$BINARY"
+  ASSET_NAME="kubectl-ktool.sh"
+  BINARY_NAME="kubectl-ktool"
+  INSTALL_PATH="/usr/local/bin/$BINARY_NAME"
 
-  echo "--> Getting latest version..."
-  VERSION=$(curl -fsSL "https://api.github.com/repos/$REPO/releases/latest" | grep -oP '"tag_name": "\K[^"]+') || error "Failed to fetch latest version"
-
-  if [[ -z "$VERSION" ]]; then
-    error "Latest version tag is empty"
+  echo "--> Getting latest release information..."
+  RELEASE_JSON=$(curl -fsSL "https://api.github.com/repos/$REPO/releases/latest") || error "Failed to fetch release info"
+  VERSION=$(echo "$RELEASE_JSON" | grep 'tag_name' | sed 's/.*"tag_name": *"\([^"]*\)".*/\1/') || error "Failed to parse version tag"
+  if [ -z "$VERSION" ]; then
+    error "Could not find latest version tag"
+  fi
+  
+  DOWNLOAD_URL=$(echo "$RELEASE_JSON" | grep 'browser_download_url' | grep "$ASSET_NAME" | sed 's/.*"browser_download_url": *"\([^"]*\)".*/\1/') || error "Failed to find download URL for $ASSET_NAME"
+  if [ -z "$DOWNLOAD_URL" ]; then
+    error "Download URL for $ASSET_NAME is empty"
   fi
 
-  echo "--> Downloading $BINARY ($VERSION)..."
-  curl -fsSL -o "/tmp/$BINARY" "https://github.com/$REPO/releases/download/$VERSION/$BINARY" || error "Download failed"
+  echo "--> Downloading $BINARY_NAME ($VERSION)..."
+  curl -fsSL -o "/tmp/$BINARY_NAME" "$DOWNLOAD_URL" || error "Download failed"
 
   echo "--> Making it executable..."
-  chmod +x "/tmp/$BINARY" || error "Failed to make executable"
+  chmod +x "/tmp/$BINARY_NAME" || error "Failed to make executable"
 
   echo "--> Moving to /usr/local/bin (may require sudo)..."
-  sudo mv "/tmp/$BINARY" "$INSTALL_PATH" || error "Failed to move binary to $INSTALL_PATH"
+  sudo mv "/tmp/$BINARY_NAME" "$INSTALL_PATH" || error "Failed to move binary to $INSTALL_PATH"
 
-  echo -e "\n[OK] Installed successfully!"
+  echo "\n[OK] Installed successfully!"
   echo "Run: kubectl ktool version"
 )
