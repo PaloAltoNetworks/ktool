@@ -33,6 +33,6 @@
   echo "--> Moving to /usr/local/bin (may require sudo)..."
   sudo mv "/tmp/$BINARY_NAME" "$INSTALL_PATH" || error "Failed to move binary to $INSTALL_PATH"
 
-  echo "\n[OK] Installed successfully!"
+  echo "[OK] Installed successfully!"
   echo "Run: kubectl ktool version"
 )
