@@ -8,6 +8,7 @@ GITHUB_USER="PaloAltoNetworks"
 GITHUB_REPO="ktool"
 SCRIPT_NAME="kubectl-ktool.sh"
 GITHUB_API_URL="https://api.github.com/repos/${GITHUB_USER}/${GITHUB_REPO}/releases/latest"
+INSTALLATION_SCRIPT_URL="https://raw.githubusercontent.com/${GITHUB_USER}/${GITHUB_REPO}/main/install.sh"
 
 # --- Helper Functions ---
 error() {
@@ -43,64 +44,87 @@ usage() {
 
 
 # --- Automatic Update Check Logic ---
-fetch_latest_release_json() {
-    if ! command -v curl &> /dev/null; then
+
+# get_latest_release gets the latest release tag from GitHub.
+# It encapsulates the logic to fetch and parse the release information.
+#
+# Arguments:
+#   $@: Additional arguments to pass to curl (e.g., --max-time).
+#
+# Outputs:
+#   The latest release tag string (e.g., "ktool-v1.2.3").
+#   Returns empty and a non-zero exit code on failure.
+get_latest_release() {
+    local LATEST_RELEASE_JSON
+    LATEST_RELEASE_JSON=$(curl -fsSL "$@" "${GITHUB_API_URL}" 2>/dev/null)
+    if [ -z "$LATEST_RELEASE_JSON" ]; then
         return 1
     fi
-    curl "$@" -fsSL "${GITHUB_API_URL}" 2>/dev/null
+
+    local LATEST_RELEASE
+    LATEST_RELEASE=$(echo "$LATEST_RELEASE_JSON" | grep -m 1 '"tag_name":' | cut -d'"' -f4)
+
+    if [ -z "$LATEST_RELEASE" ]; then
+        return 1
+    fi
+    echo "$LATEST_RELEASE"
 }
 
+# check_for_updates checks if a newer version of the script is available.
+# It performs a quick check in the background and warns the user if an
+# update is found. It enforces mandatory updates for new major versions.
+#
+# Arguments:
+#   $1: The command argument passed to the main script (e.g., "version", "upgrade").
 check_for_updates() {
     local command_arg="$1"
     if [[ "$command_arg" == "upgrade" ]]; then
         return
     fi
 
-    # Use a short timeout for the background check.
-    local LATEST_RELEASE_JSON
-    LATEST_RELEASE_JSON=$(fetch_latest_release_json --max-time 3)
-    if [ -z "$LATEST_RELEASE_JSON" ]; then
-        return
-    fi
-    
     local LATEST_RELEASE
-    LATEST_RELEASE=$(echo "$LATEST_RELEASE_JSON" | grep -m 1 '"tag_name":' | cut -d'"' -f4)
+    LATEST_RELEASE=$(get_latest_release --max-time 3)
 
     if [ -z "$LATEST_RELEASE" ] || [ "$RELEASE" == "$LATEST_RELEASE" ]; then
         return
     fi
 
-    local CURRENT_MAJOR_RELEASE=$(echo "$RELEASE" | cut -d'v' -f2 | cut -d'.' -f1)
-    local LATEST_MAJOR_RELEASE=$(echo "$LATEST_RELEASE" | cut -d'v' -f2 | cut -d'.' -f1)
+    # Compare major version numbers (e.g., the '1' in 'ktool-v1.2.3').
+    local CURRENT_MAJOR_RELEASE
+    CURRENT_MAJOR_RELEASE=$(echo "$RELEASE" | cut -d'ktool-v' -f2 | cut -d'.' -f1)
+    
+    local LATEST_MAJOR_RELEASE
+    LATEST_MAJOR_RELEASE=$(echo "$LATEST_RELEASE" | cut -d'ktool-v' -f2 | cut -d'.' -f1)
 
     if [ "$LATEST_MAJOR_RELEASE" -gt "$CURRENT_MAJOR_RELEASE" ]; then
+        # For major version changes, the update is considered mandatory for most commands.
         case "$command_arg" in
             version|""|-h|--help)
+                # For non-critical commands, just show a strong warning.
                 WARN "MANDATORY UPDATE RECOMMENDED. A new major release (${LATEST_RELEASE}) is available. Please run 'kubectl ktool upgrade'."
                 ;;
             *)
+                # For all other commands, block execution and demand an upgrade.
                 error "Mandatory update required. A new major release (${LATEST_RELEASE}) is available. Please run 'kubectl ktool upgrade'."
                 ;;
         esac
     else
+        # For minor or patch updates, a simple warning is sufficient.
         WARN "A new release (${LATEST_RELEASE}) is available. Please run 'kubectl ktool upgrade' to update."
     fi
 }
 
+# handle_upgrade manages the script upgrade process.
+# It replaces the current script with the latest version from GitHub using the
+# official install.sh script.
 handle_upgrade() {
     echo "Current release: ${RELEASE}"
     echo "Fetching latest release information from GitHub..."
     
-    local LATEST_RELEASE_JSON
-    LATEST_RELEASE_JSON=$(fetch_latest_release_json)
-    if [ -z "$LATEST_RELEASE_JSON" ]; then
-        error "Could not fetch release information from GitHub. Check network connection."
-    fi
-
     local LATEST_RELEASE
-    LATEST_RELEASE=$(echo "$LATEST_RELEASE_JSON" | grep -m 1 '"tag_name":' | cut -d'"' -f4)
+    LATEST_RELEASE=$(get_latest_release)
     if [ -z "$LATEST_RELEASE" ]; then
-        error "Could not determine the latest release tag from the GitHub API response."
+        error "Could not fetch release information from GitHub. Check network connection or API response."
     fi
 
     echo "Latest release available: ${LATEST_RELEASE}"
@@ -109,43 +133,15 @@ handle_upgrade() {
         exit 0
     fi
 
-    local DOWNLOAD_URL
-    DOWNLOAD_URL=$(echo "$LATEST_RELEASE_JSON" | tr -d '\n\r' | sed -n "s/.*\"name\":\"${SCRIPT_NAME}\"[^}]*\"browser_download_url\":\"\([^\"]*\)\".*/\1/p")
-    if [ -z "$DOWNLOAD_URL" ]; then
-        error "Could not find the script asset '${SCRIPT_NAME}' in the latest GitHub release."
-    fi
-
-    local TMP_FILE="/tmp/${SCRIPT_NAME}.new.$$"
-    echo "Downloading ${LATEST_RELEASE} from GitHub..."
-    if ! curl -fsSL -o "${TMP_FILE}" "${DOWNLOAD_URL}"; then
-        error "Download failed."
-        rm -f "${TMP_FILE}"
-        exit 1
-    fi
-
-    local INSTALL_PATH
-    INSTALL_PATH=$(which kubectl-ktool)
-    if [ -z "$INSTALL_PATH" ]; then
-        error "Could not determine the installation path of 'kubectl-ktool'."
-        rm -f "${TMP_FILE}"
-        exit 1
-    fi
-
-    chmod +x "${TMP_FILE}"
-
-    echo "Installing upgrade..."
-    if [[ -w "$(dirname "$INSTALL_PATH")" ]]; then
-        mv "${TMP_FILE}" "${INSTALL_PATH}"
-    elif command -v sudo &> /dev/null; then
-        sudo mv "${TMP_FILE}" "${INSTALL_PATH}"
+    echo "Upgrading to ${LATEST_RELEASE}..."
+    if curl -fsSL "${INSTALLATION_SCRIPT_URL}" | bash; then
+        echo "Upgrade complete to release ${LATEST_RELEASE}."
+        echo "Please re-run your previous command."
     else
-        error "Cannot write to ${INSTALL_PATH}. Please run upgrade command with sudo."
-        rm -f "${TMP_FILE}"
-        exit 1
+        error "The upgrade process failed."
     fi
-    echo "Upgrade complete to release ${LATEST_RELEASE}."
+    exit 0
 }
-
 
 # --- Version Command Logic ---
 handle_version() {
