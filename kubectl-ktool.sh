@@ -329,7 +329,6 @@ collect_logs() {
     echo "Support bundle created successfully: ${BUNDLE_DIR}.tar.gz"
 }
 
-
 # --- SCRIPT EXECUTION STARTS HERE ---
 
 # Run the synchronous update check. This is critical for the blocking logic.
