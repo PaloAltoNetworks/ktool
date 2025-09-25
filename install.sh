@@ -33,10 +33,5 @@
   echo "--> Moving to /usr/local/bin (may require sudo)..."
   sudo mv "/tmp/$BINARY_NAME" "$INSTALL_PATH" || error "Failed to move binary to $INSTALL_PATH"
 
-  cat <<EOF
-  ✅ All set! ktool is now up-to-date.
-
-  To verify, run the following command:
-    kubectl ktool version
-  EOF
+  echo -e "✅ All set! ktool is now up-to-date.\n\nTo verify, run the following command:\n  kubectl ktool version"
 )
