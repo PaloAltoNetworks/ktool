@@ -42,7 +42,6 @@ usage() {
     exit 1
 }
 
-
 # --- Automatic Update Check Logic ---
 
 # get_latest_release gets the latest release tag from GitHub.
