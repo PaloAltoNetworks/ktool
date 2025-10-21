@@ -301,7 +301,10 @@ collect_logs() {
     done
 
     echo "[5/6] Collecting Pod Logs..."
-    mkdir -p "${BUNDLE_DIR}/logs"
+    mkdir -p "${BUNDLE_DIR}/pod_logs"
+    mkdir -p "${BUNDLE_DIR}/job_logs"
+    mkdir -p "${BUNDLE_DIR}/cronjob_logs"
+
     PODS=$(${KUBECTL_BASE_CMD} get pods -n "$NAMESPACE" -o jsonpath='{.items[*].metadata.name}' 2>/dev/null)  
     for pod in $PODS; do
       (
@@ -312,6 +315,42 @@ collect_logs() {
         done
       ) &
     done
+
+    # Collect logs for job pods specifically
+    echo "  -> Collecting job logs..."
+    JOBS=$(${KUBECTL_BASE_CMD} get jobs -n "$NAMESPACE" -o jsonpath='{.items[*].metadata.name}' 2>/dev/null)
+    for job in $JOBS; do
+      (
+        JOB_PODS=$(${KUBECTL_BASE_CMD} get pods -n "$NAMESPACE" -l "job-name=${job}" -o jsonpath='{.items[*].metadata.name}' 2>/dev/null)
+        for pod in $JOB_PODS; do
+            CONTAINERS=$(${KUBECTL_BASE_CMD} get pod "$pod" -n "$NAMESPACE" -o jsonpath='{.spec.containers[*].name} {.spec.initContainers[*].name}' 2>/dev/null)
+            for container in $CONTAINERS; do
+                collect_cmd "Job logs for ${job}/${pod}/${container}" "${KUBECTL_BASE_CMD} logs ${pod} -c ${container} -n ${NAMESPACE}" "job_logs/job_${job}_${pod}_${container}.log"
+                collect_cmd "Previous job logs for ${job}/${pod}/${container}" "${KUBECTL_BASE_CMD} logs ${pod} -c ${container} -n ${NAMESPACE} --previous" "job_logs/job_${job}_${pod}_${container}.previous.log"
+            done
+        done
+      ) &
+    done
+    
+    # Collect logs for cronjob pods specifically
+    echo "  -> Collecting cronjob logs..."
+    CRONJOBS=$(${KUBECTL_BASE_CMD} get cronjobs -n "$NAMESPACE" -o jsonpath='{.items[*].metadata.name}' 2>/dev/null)
+    for cronjob in $CRONJOBS; do
+      (
+        CRONJOB_JOBS=$(${KUBECTL_BASE_CMD} get jobs -n "$NAMESPACE" -l "cronjob=${cronjob}" -o jsonpath='{.items[*].metadata.name}' 2>/dev/null)
+        for job in $CRONJOB_JOBS; do
+            CRONJOB_PODS=$(${KUBECTL_BASE_CMD} get pods -n "$NAMESPACE" -l "job-name=${job}" -o jsonpath='{.items[*].metadata.name}' 2>/dev/null)
+            for pod in $CRONJOB_PODS; do
+                CONTAINERS=$(${KUBECTL_BASE_CMD} get pod "$pod" -n "$NAMESPACE" -o jsonpath='{.spec.containers[*].name} {.spec.initContainers[*].name}' 2>/dev/null)
+                for container in $CONTAINERS; do
+                    collect_cmd "CronJob logs for ${cronjob}/${job}/${pod}/${container}" "${KUBECTL_BASE_CMD} logs ${pod} -c ${container} -n ${NAMESPACE}" "cronjob_logs/cronjob_${cronjob}_${job}_${pod}_${container}.log"
+                    collect_cmd "Previous CronJob logs for ${cronjob}/${job}/${pod}/${container}" "${KUBECTL_BASE_CMD} logs ${pod} -c ${container} -n ${NAMESPACE} --previous" "cronjob_logs/cronjob_${cronjob}_${job}_${pod}_${container}.previous.log"
+                done
+            done
+        done
+      ) &
+    done
+    
     wait 
     echo "Log collection complete."
 
