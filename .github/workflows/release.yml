@@ -35,10 +35,10 @@ jobs:
       - name: Determine new release tag
         id: determine_tag
         run: |
-          if [ "${{ github.event_name }}" = "push" ]; then
+          if [ "${EVENT_NAME}" = "push" ]; then
               BUMP_TYPE="patch"
           else
-              BUMP_TYPE="${{ github.event.inputs.bump }}"
+              BUMP_TYPE="${BUMP}"
           fi
 
           VERSION="${{ steps.get_latest_tag.outputs.LATEST_TAG }}"
@@ -68,6 +68,10 @@ jobs:
           NEW_TAG="ktool-v${MAJOR}.${MINOR}.${PATCH}"
           echo "Bumping version: $VERSION => $NEW_TAG"
           echo "RELEASE_TAG=$NEW_TAG" >> $GITHUB_OUTPUT
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BUMP: ${{ github.event.inputs.bump }}
+          
       - name: Create and push new tag
         run: |
           git config user.name "github-actions[bot]"
