@@ -9,6 +9,9 @@ GITHUB_REPO="ktool"
 SCRIPT_NAME="kubectl-ktool.sh"
 GITHUB_API_URL="https://api.github.com/repos/${GITHUB_USER}/${GITHUB_REPO}/releases/latest"
 INSTALLATION_SCRIPT_URL="https://raw.githubusercontent.com/${GITHUB_USER}/${GITHUB_REPO}/main/install.sh"
+NAMESPACE="panw"
+KUBECTL_BASE_CMD="kubectl"
+HELM_BASE_CMD="helm"
 
 # --- Helper Functions ---
 error() {
@@ -171,29 +174,16 @@ handle_version() {
 }
 
 
-# --- Collect Logs Logic ---
-check_dependencies() {
-    for cmd in helm tar; do
-        if ! command -v "$cmd" &> /dev/null; then
-            echo "ERROR: '$cmd' command not found. Please ensure it's installed and in your PATH." >&2
-            exit 1
-        fi
-    done
-}
-
-collect_logs() {
-    check_dependencies
-
-    NAMESPACE="panw"
-    KUBECONFIG_FLAG=""
-    CONTEXT_FLAG=""
-    HELM_CONTEXT_FLAG=""
-    BUNDLE_DIR=""
-
-    trap 'if [ -n "${BUNDLE_DIR}" ]; then rm -rf "${BUNDLE_DIR}"; fi' EXIT INT TERM
+# @description Parses command-line arguments to set up base commands for kubectl and helm.
+# This function populates the global variables: KUBECTL_BASE_CMD, HELM_BASE_CMD, and NAMESPACE.
+# @param "$@" The command-line arguments to parse.
+setup_kube_commands() {
+    local KUBECONFIG_FLAG=""
+    local CONTEXT_FLAG=""
+    local HELM_CONTEXT_FLAG=""
 
     shift
-    
+
     while [[ "$#" -gt 0 ]]; do
         case $1 in
             -n|--namespace|--namespace=*)
@@ -230,25 +220,41 @@ collect_logs() {
                 fi
                 ;;
             *)
-                echo "ERROR: Unknown option for collect-logs: $1" >&2
+                echo "ERROR: Unknown option: $1" >&2
                 exit 1
                 ;;
         esac
     done
 
-    KUBECTL_BASE_CMD="kubectl ${KUBECONFIG_FLAG} ${CONTEXT_FLAG}"
-    HELM_BASE_CMD="helm ${KUBECONFIG_FLAG} ${HELM_CONTEXT_FLAG}"
+    KUBECTL_BASE_CMD="kubectl ${KUBECONFIG_FLAG} ${CONTEXT_FLAG} -n ${NAMESPACE}"
+    HELM_BASE_CMD="helm ${KUBECONFIG_FLAG} ${HELM_CONTEXT_FLAG} -n ${NAMESPACE}"
 
     echo "--> Verifying namespace '${NAMESPACE}' exists..."
     if ! ${KUBECTL_BASE_CMD} get namespace "${NAMESPACE}" &> /dev/null; then
         echo "ERROR: Namespace '${NAMESPACE}' not found. Please verify the namespace name and your cluster context." >&2
         exit 1
     fi
+}
+
+# --- Collect Logs Logic ---
+check_dependencies() {
+    for cmd in helm tar; do
+        if ! command -v "$cmd" &> /dev/null; then
+            echo "ERROR: '$cmd' command not found. Please ensure it's installed and in your PATH." >&2
+            exit 1
+        fi
+    done
+}
+
+collect_logs() {
+    check_dependencies
+    setup_kube_commands "$@"
 
     KONNECTOR_HELM_RELEASE="konnector"
     K8S_MANAGER_HELM_RELEASE="k8s-connector-release"
     BUNDLE_DIR="konnector-support-bundle-${NAMESPACE}-${RELEASE}-$(date +"%Y%m%d-%H%M%S")"
-    
+    trap 'if [ -n "${BUNDLE_DIR}" ]; then rm -rf "${BUNDLE_DIR}"; fi' EXIT INT TERM
+
     echo "Starting support bundle collection for namespace: ${NAMESPACE}"
     echo "Output will be saved to ${BUNDLE_DIR}.tar.gz"
 
@@ -261,9 +267,14 @@ collect_logs() {
         local title="$1"
         local cmd="$2"
         local file="$3"
+        local cleanup_on_fail="$4"
         echo "  -> Collecting ${title}..."
         if ! bash -c "$cmd" > "${BUNDLE_DIR}/${file}" 2>&1; then
-            echo "WARN: Collection for '${title}' failed. See ${BUNDLE_DIR}/${file} for details." >&2
+            if [ "$cleanup_on_fail" = "--cleanup-on-fail" ]; then
+                rm -f "${BUNDLE_DIR}/${file}"
+            else
+                echo "WARN: Collection for '${title}' failed. See ${BUNDLE_DIR}/${file} for details." >&2
+            fi
         fi
     }
 
@@ -275,44 +286,44 @@ collect_logs() {
 
     echo "[2/6] Collecting Namespace Information..."
     mkdir -p "${BUNDLE_DIR}/namespace-info"
-    collect_cmd "Events in namespace" "${KUBECTL_BASE_CMD} get events -n ${NAMESPACE} --sort-by='.lastTimestamp'" "namespace-info/events.txt"
+    collect_cmd "Events in namespace" "${KUBECTL_BASE_CMD} get events  --sort-by='.lastTimestamp'" "namespace-info/events.txt"
 
     echo "[3/6] Collecting Helm Release Information..."
     mkdir -p "${BUNDLE_DIR}/helm"
-    collect_cmd "Helm status for ${KONNECTOR_HELM_RELEASE}" "${HELM_BASE_CMD} status ${KONNECTOR_HELM_RELEASE} -n ${NAMESPACE}" "helm/status-${KONNECTOR_HELM_RELEASE}.txt"
-    collect_cmd "Helm values for ${KONNECTOR_HELM_RELEASE}" "${HELM_BASE_CMD} get values ${KONNECTOR_HELM_RELEASE} -n ${NAMESPACE} -a" "helm/values-${KONNECTOR_HELM_RELEASE}.yaml"
-    collect_cmd "Helm status for ${K8S_MANAGER_HELM_RELEASE}" "${HELM_BASE_CMD} status ${K8S_MANAGER_HELM_RELEASE} -n ${NAMESPACE}" "helm/status-${K8S_MANAGER_HELM_RELEASE}.txt"
-    collect_cmd "Helm values for ${K8S_MANAGER_HELM_RELEASE}" "${HELM_BASE_CMD} get values ${K8S_MANAGER_HELM_RELEASE} -n ${NAMESPACE} -a" "helm/values-${K8S_MANAGER_HELM_RELEASE}.yaml"
+    collect_cmd "Helm status for ${KONNECTOR_HELM_RELEASE}" "${HELM_BASE_CMD} status ${KONNECTOR_HELM_RELEASE}  "helm/status-${KONNECTOR_HELM_RELEASE}.txt"
+    collect_cmd "Helm values for ${KONNECTOR_HELM_RELEASE}" "${HELM_BASE_CMD} get values ${KONNECTOR_HELM_RELEASE} -a" "helm/values-${KONNECTOR_HELM_RELEASE}.yaml"
+    collect_cmd "Helm status for ${K8S_MANAGER_HELM_RELEASE}" "${HELM_BASE_CMD} status ${K8S_MANAGER_HELM_RELEASE}  "helm/status-${K8S_MANAGER_HELM_RELEASE}.txt"
+    collect_cmd "Helm values for ${K8S_MANAGER_HELM_RELEASE}" "${HELM_BASE_CMD} get values ${K8S_MANAGER_HELM_RELEASE} -a" "helm/values-${K8S_MANAGER_HELM_RELEASE}.yaml"
 
     echo "[4/6] Collecting Workload Statuses..."
     mkdir -p "${BUNDLE_DIR}/workloads"
-    collect_cmd "All workloads (wide)" "${KUBECTL_BASE_CMD} get all -n ${NAMESPACE} -o wide" "workloads/get-all-wide.txt"
-    collect_cmd "All workloads (yaml)" "${KUBECTL_BASE_CMD} get all -n ${NAMESPACE} -o yaml" "workloads/get-all.yaml"
+    collect_cmd "All workloads (wide)" "${KUBECTL_BASE_CMD} get all -o wide" "workloads/get-all-wide.txt"
+    collect_cmd "All workloads (yaml)" "${KUBECTL_BASE_CMD} get all -o yaml" "workloads/get-all.yaml"
     
     echo "  -> Describing all workloads..."
-    for kind in pod deployment statefulset daemonset service configmap replicaset ingress; do
-        RESOURCES=$(${KUBECTL_BASE_CMD} get "$kind" -n "$NAMESPACE" -o jsonpath='{.items[*].metadata.name}' 2>/dev/null)
+    for kind in pod deployment statefulset daemonset service configmap replicaset ingress job cronjob; do
+        RESOURCES=$(${KUBECTL_BASE_CMD} get "$kind" -o jsonpath='{.items[*].metadata.name}' 2>/dev/null)
         if [ -n "$RESOURCES" ]; then
             mkdir -p "${BUNDLE_DIR}/workloads/${kind}"
             for name in $RESOURCES; do
-                collect_cmd "${kind}/${name}" "${KUBECTL_BASE_CMD} describe ${kind} ${name} -n ${NAMESPACE}" "workloads/${kind}/${name}.describe.txt"
+                collect_cmd "${kind}/${name}" "${KUBECTL_BASE_CMD} describe ${kind} ${name}" "workloads/${kind}/${name}.describe.txt"
             done
         fi
     done
 
     echo "[5/6] Collecting Pod Logs..."
     mkdir -p "${BUNDLE_DIR}/logs"
-    PODS=$(${KUBECTL_BASE_CMD} get pods -n "$NAMESPACE" -o jsonpath='{.items[*].metadata.name}' 2>/dev/null)  
+    PODS=$(${KUBECTL_BASE_CMD} get pods -o jsonpath='{.items[*].metadata.name}' 2>/dev/null)
     for pod in $PODS; do
       (
-        CONTAINERS=$(${KUBECTL_BASE_CMD} get pod "$pod" -n "$NAMESPACE" -o jsonpath='{.spec.containers[*].name} {.spec.initContainers[*].name}' 2>/dev/null)
+        CONTAINERS=$(${KUBECTL_BASE_CMD} get pod "$pod"  -o jsonpath='{.spec.containers[*].name} {.spec.initContainers[*].name}' 2>/dev/null)
         for container in $CONTAINERS; do
-            collect_cmd "Logs for ${pod}/${container}" "${KUBECTL_BASE_CMD} logs ${pod} -c ${container} -n ${NAMESPACE}" "logs/${pod}_${container}.log"
-            collect_cmd "Previous logs for ${pod}/${container}" "${KUBECTL_BASE_CMD} logs ${pod} -c ${container} -n ${NAMESPACE} --previous" "logs/${pod}_${container}.previous.log"
+            collect_cmd "Logs for ${pod}/${container}" "${KUBECTL_BASE_CMD} logs ${pod} -c ${container}" "logs/${pod}_${container}.log" "--cleanup-on-fail"
+            collect_cmd "Previous logs for ${pod}/${container}" "${KUBECTL_BASE_CMD} logs ${pod} -c ${container} --previous" "logs/${pod}_${container}.previous.log" "--cleanup-on-fail"
         done
       ) &
     done
-    wait 
+    wait
     echo "Log collection complete."
 
     echo "[6/6] Collecting Operator Configurations..."
@@ -329,26 +340,27 @@ collect_logs() {
     echo "Support bundle created successfully: ${BUNDLE_DIR}.tar.gz"
 }
 
-# --- SCRIPT EXECUTION STARTS HERE ---
+main() {
+    # Run the synchronous update check. This is critical for the blocking logic.
+    check_for_updates "$1"
 
-# Run the synchronous update check. This is critical for the blocking logic.
-check_for_updates "$1"
+    case "$1" in
+        collect-logs)
+            collect_logs "$@"
+            ;;
+        upgrade)
+            handle_upgrade
+            ;;
+        version)
+            handle_version
+            ;;
+        ""|-h|--help)
+            usage
+            ;;
+        *)
+            error "Unknown command '$1'"
+            ;;
+    esac
+}
 
-# --- MAIN COMMAND ROUTER ---
-case "$1" in
-    collect-logs)
-        collect_logs "$@"
-        ;;
-    upgrade)
-        handle_upgrade
-        ;;
-    version)
-        handle_version
-        ;;
-    ""|-h|--help)
-        usage
-        ;;
-    *)
-        error "Unknown command '$1'"
-        ;;
-esac
+main "$@"
