@@ -290,9 +290,9 @@ collect_logs() {
 
     echo "[3/6] Collecting Helm Release Information..."
     mkdir -p "${BUNDLE_DIR}/helm"
-    collect_cmd "Helm status for ${KONNECTOR_HELM_RELEASE}" "${HELM_BASE_CMD} status ${KONNECTOR_HELM_RELEASE}  "helm/status-${KONNECTOR_HELM_RELEASE}.txt"
+    collect_cmd "Helm status for ${KONNECTOR_HELM_RELEASE}" "${HELM_BASE_CMD} status ${KONNECTOR_HELM_RELEASE}" "helm/status-${KONNECTOR_HELM_RELEASE}.txt"
     collect_cmd "Helm values for ${KONNECTOR_HELM_RELEASE}" "${HELM_BASE_CMD} get values ${KONNECTOR_HELM_RELEASE} -a" "helm/values-${KONNECTOR_HELM_RELEASE}.yaml"
-    collect_cmd "Helm status for ${K8S_MANAGER_HELM_RELEASE}" "${HELM_BASE_CMD} status ${K8S_MANAGER_HELM_RELEASE}  "helm/status-${K8S_MANAGER_HELM_RELEASE}.txt"
+    collect_cmd "Helm status for ${K8S_MANAGER_HELM_RELEASE}" "${HELM_BASE_CMD} status ${K8S_MANAGER_HELM_RELEASE}" "helm/status-${K8S_MANAGER_HELM_RELEASE}.txt"
     collect_cmd "Helm values for ${K8S_MANAGER_HELM_RELEASE}" "${HELM_BASE_CMD} get values ${K8S_MANAGER_HELM_RELEASE} -a" "helm/values-${K8S_MANAGER_HELM_RELEASE}.yaml"
 
     echo "[4/6] Collecting Workload Statuses..."
